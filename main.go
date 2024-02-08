@@ -11,9 +11,8 @@ import (
 // time-tracker end -n Task#1
 // time-tracker summary   (default this week)
 // time-tracker summary -st 01/01/2024 -et 01/07/2024
-// time-tracker summary -w 1 -y 2024
-// time-tracker update Task#1 -d description -st startTime -eT endTime -n name
-// time-tracker add Task#1 -d description -st startTime -eT endTime -n name
+// time-tracker update Task#1 -d description -st startTime -eT endTime
+// time-tracker add Task#1 -d description -st startTime -eT endTime
 
 // Better to use something like Cobra, but we are going to build just for the sake of learning
 func main() {
@@ -31,7 +30,6 @@ func main() {
 	description := flag.String("d", "", "Description of the entry")
 	startTimeStr := flag.String("st", "", "Start time of the entry")
 	endTimeStr := flag.String("et", "", "End time of the entry")
-	weekStr := flag.String("w", "", "Summary week filter")
 	yearStr := flag.String("y", "", "Summary year filter")
 
 	flag.Parse()
@@ -72,9 +70,9 @@ func main() {
 
 	e4 := &entry{
 		name:        "Task 4",
-		description: "Description 3",
-		startTime:   time.Now().Add(-7 * 24 * time.Hour),
-		endTime:     time.Now().Add(-7 * 24 * time.Hour),
+		description: "Description 4",
+		startTime:   time.Now().Add(3 * 24 * time.Hour),
+		endTime:     time.Now().Add(3 * 24 * time.Hour),
 	}
 
 	app.entries[e4.name] = e4
@@ -83,11 +81,35 @@ func main() {
 	case "start":
 		app.handleStart(*name, *description)
 	case "end":
-		app.handleEnd(*name)
+		err := app.handleEnd(*name)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	case "summary":
-		app.handleSummary(*startTimeStr, *endTimeStr, *weekStr, *yearStr)
+		err := app.handleSummary(*startTimeStr, *endTimeStr, *yearStr)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case "update":
+		err := app.handleUpdate(*name, *description, *startTimeStr, *endTimeStr)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case "add":
+		err := app.handleAdd(*name, *description, *startTimeStr, *endTimeStr)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	default:
 
+	}
+
+	for _, e := range app.entries {
+		fmt.Printf("%v\n", e)
 	}
 
 	// Validate command
@@ -125,7 +147,7 @@ func (a *application) handleEnd(name string) error {
 
 }
 
-func (a *application) handleSummary(startTimeStr string, endTimeStr string, weekStr string, year string) error {
+func (a *application) handleSummary(startTimeStr string, endTimeStr string, year string) error {
 	// I need a per day description of the task I've done
 
 	entries := []*entry{}
@@ -153,6 +175,89 @@ func (a *application) handleSummary(startTimeStr string, endTimeStr string, week
 	return nil
 }
 
+// time-tracker add Task#1 -d description -st startTime -eT endTime
+func (a *application) handleAdd(name string, desc string, startTimeStr string, endTimeStr string) error {
+	var startTime time.Time
+	var endTime time.Time
+	var err error
+
+	if name == "" {
+		return fmt.Errorf("error: name must be provided")
+	}
+
+	if desc == "" {
+		return fmt.Errorf("error: description must be provided")
+	}
+
+	if startTimeStr == "" {
+		return fmt.Errorf("error: start time must be provided")
+	}
+
+	if endTimeStr == "" {
+		return fmt.Errorf("error: end time must be provided")
+	}
+
+	startTime, err = time.ParseInLocation("2006-01-02", startTimeStr, time.Local)
+	if err != nil {
+		return err
+	}
+
+	endTime, err = time.ParseInLocation("2006-01-02", endTimeStr, time.Local)
+	if err != nil {
+		return err
+	}
+
+	e := &entry{
+		name:        name,
+		description: desc,
+		startTime:   startTime,
+		endTime:     endTime,
+	}
+
+	a.saveEntry(e)
+
+	return nil
+}
+
+func (a *application) handleUpdate(name string, desc string, startTimeStr string, endTimeStr string) error {
+
+	var startTime time.Time
+	var endTime time.Time
+	var err error
+
+	if name == "" {
+		return fmt.Errorf("error: name must be provided")
+	}
+
+	if startTimeStr != "" {
+		startTime, err = time.ParseInLocation("2006-01-02", startTimeStr, time.Local)
+		if err != nil {
+			return err
+		}
+	}
+
+	if endTimeStr != "" {
+		endTime, err = time.ParseInLocation("2006-01-02", startTimeStr, time.Local)
+		if err != nil {
+			return err
+		}
+	}
+
+	e := &entry{
+		name:        name,
+		description: desc,
+		startTime:   startTime,
+		endTime:     endTime,
+	}
+
+	err = a.updateEntry(e)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func getDates(startTimeStr string, endTimeStr string) (time.Time, time.Time, error) {
 
 	startDate, err := time.ParseInLocation("2006-01-02", startTimeStr, time.Local)
@@ -171,7 +276,7 @@ func getDates(startTimeStr string, endTimeStr string) (time.Time, time.Time, err
 }
 
 type entry struct {
-	name        string
+	name        string `json:"name"`
 	description string
 	startTime   time.Time
 	endTime     time.Time
@@ -230,7 +335,7 @@ func (a *application) getActualWeek() []*entry {
 	offset := -int(time.Now().Weekday())
 
 	weekStart := time.Now().AddDate(0, 0, offset).Truncate(24 * time.Hour)
-	weekEnd := weekStart.AddDate(0, 0, 4).Add(24*time.Hour - time.Nanosecond)
+	weekEnd := weekStart.AddDate(0, 0, 7).Add(24*time.Hour - time.Nanosecond)
 
 	return a.getByDateRange(weekStart, weekEnd)
 }
