@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -34,48 +35,25 @@ func main() {
 
 	flag.Parse()
 
-	app := &application{
-		entries: make(map[string]*entry),
+	app := &application{}
+
+	entriesSlice := []*entry{}
+
+	bytes, err := os.ReadFile("entryData.json")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
-	e1St, _ := time.ParseInLocation("2006-01-02", "2024-02-05", time.Local)
-	e1Et, _ := time.ParseInLocation("2006-01-02", "2024-02-05", time.Local)
-
-	e1 := &entry{
-		name:        "Task 1",
-		description: "Description 1",
-		startTime:   e1St,
-		endTime:     e1Et,
+	err = json.Unmarshal(bytes, &entriesSlice)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
-	app.entries[e1.name] = e1
+	entries := sliceToMap(entriesSlice)
 
-	e2 := &entry{
-		name:        "Task 2",
-		description: "Description 2",
-		startTime:   time.Now().UTC(),
-		endTime:     time.Now().UTC(),
-	}
-
-	app.entries[e2.name] = e2
-
-	e3 := &entry{
-		name:        "Task 3",
-		description: "Description 3",
-		startTime:   time.Now().Add(24 * time.Hour),
-		endTime:     time.Now().Add(25 * time.Hour),
-	}
-
-	app.entries[e3.name] = e3
-
-	e4 := &entry{
-		name:        "Task 4",
-		description: "Description 4",
-		startTime:   time.Now().Add(3 * 24 * time.Hour),
-		endTime:     time.Now().Add(3 * 24 * time.Hour),
-	}
-
-	app.entries[e4.name] = e4
+	app.entries = entries
 
 	switch command {
 	case "start":
@@ -108,12 +86,50 @@ func main() {
 
 	}
 
-	for _, e := range app.entries {
-		fmt.Printf("%v\n", e)
+	err = saveToFile(app.entries)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	// Validate command
 	// Handle Command
+}
+
+func saveToFile(entries map[string]*entry) error {
+	entriesSlice := mapToSlice(entries)
+
+	entriesJson, err := json.Marshal(entriesSlice)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("entryData.json", entriesJson, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func mapToSlice(entriesMap map[string]*entry) []*entry {
+	entriesSlice := []*entry{}
+
+	for _, e := range entriesMap {
+		entriesSlice = append(entriesSlice, e)
+	}
+
+	return entriesSlice
+}
+
+func sliceToMap(entriesSlice []*entry) map[string]*entry {
+	entriesMap := make(map[string]*entry)
+
+	for _, e := range entriesSlice {
+		entriesMap[e.Name] = e
+	}
+
+	return entriesMap
 }
 
 func (a *application) handleStart(name string, description string) {
@@ -123,9 +139,9 @@ func (a *application) handleStart(name string, description string) {
 	startTime := time.Now()
 
 	e := &entry{
-		name:        name,
-		description: description,
-		startTime:   startTime,
+		Name:        name,
+		Description: description,
+		StartTime:   startTime,
 	}
 
 	a.entries[name] = e
@@ -134,8 +150,8 @@ func (a *application) handleStart(name string, description string) {
 func (a *application) handleEnd(name string) error {
 
 	e := &entry{
-		name:    name,
-		endTime: time.Now(),
+		Name:    name,
+		EndTime: time.Now(),
 	}
 
 	err := a.updateEntry(e)
@@ -165,10 +181,12 @@ func (a *application) handleSummary(startTimeStr string, endTimeStr string, year
 
 	for _, e := range entries {
 		fmt.Printf(
-			"name: %v; startTime: %v; endTime: %v\n",
-			e.name,
-			e.startTime.Format("2006-01-02"),
-			e.endTime.Format("2006-01-02"),
+			"name: %v; description: %v; startTime: %v; endTime: %v; totalTime: %v\n",
+			e.Name,
+			e.Description,
+			e.StartTime.Format("2006-01-02"),
+			e.EndTime.Format("2006-01-02"),
+			e.EndTime.Sub(e.StartTime),
 		)
 	}
 
@@ -208,10 +226,10 @@ func (a *application) handleAdd(name string, desc string, startTimeStr string, e
 	}
 
 	e := &entry{
-		name:        name,
-		description: desc,
-		startTime:   startTime,
-		endTime:     endTime,
+		Name:        name,
+		Description: desc,
+		StartTime:   startTime,
+		EndTime:     endTime,
 	}
 
 	a.saveEntry(e)
@@ -244,10 +262,10 @@ func (a *application) handleUpdate(name string, desc string, startTimeStr string
 	}
 
 	e := &entry{
-		name:        name,
-		description: desc,
-		startTime:   startTime,
-		endTime:     endTime,
+		Name:        name,
+		Description: desc,
+		StartTime:   startTime,
+		EndTime:     endTime,
 	}
 
 	err = a.updateEntry(e)
@@ -276,10 +294,10 @@ func getDates(startTimeStr string, endTimeStr string) (time.Time, time.Time, err
 }
 
 type entry struct {
-	name        string `json:"name"`
-	description string
-	startTime   time.Time
-	endTime     time.Time
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	StartTime   time.Time `json:"startTime"`
+	EndTime     time.Time `json:"endTime"`
 }
 
 type application struct {
@@ -287,29 +305,29 @@ type application struct {
 }
 
 func (a *application) saveEntry(e *entry) {
-	a.entries[e.name] = e
+	a.entries[e.Name] = e
 }
 
 func (a *application) deleteEntry(e *entry) {
-	delete(a.entries, e.name)
+	delete(a.entries, e.Name)
 }
 
 func (a *application) updateEntry(e *entry) error {
-	en, ok := a.entries[e.name]
+	en, ok := a.entries[e.Name]
 	if !ok {
 		return fmt.Errorf("error: entry not found")
 	}
 
-	if e.description != "" {
-		en.description = e.description
+	if e.Description != "" {
+		en.Description = e.Description
 	}
 
-	if !e.startTime.IsZero() {
-		en.startTime = e.startTime
+	if !e.StartTime.IsZero() {
+		en.StartTime = e.StartTime
 	}
 
-	if !e.endTime.IsZero() {
-		en.endTime = e.endTime
+	if !e.EndTime.IsZero() {
+		en.EndTime = e.EndTime
 	}
 
 	return nil
@@ -320,8 +338,8 @@ func (a *application) getByDateRange(paramStartDate time.Time, paramEndDate time
 	entries := []*entry{}
 
 	for _, e := range a.entries {
-		if (paramStartDate.Before(e.startTime) || paramStartDate.Equal(e.startTime)) &&
-			(paramEndDate.After(e.endTime) || paramEndDate.Equal(e.endTime)) {
+		if (paramStartDate.Before(e.StartTime) || paramStartDate.Equal(e.StartTime)) &&
+			(paramEndDate.After(e.EndTime) || paramEndDate.Equal(e.EndTime)) {
 
 			entries = append(entries, e)
 
